@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/deckarep/golang-set"
+	mapset "github.com/deckarep/golang-set"
 	"github.com/go-logr/logr"
 	"github.com/hashicorp/consul-k8s/namespaces"
 	"github.com/hashicorp/consul/api"
@@ -25,8 +25,7 @@ import (
 )
 
 var (
-	codecs       = serializer.NewCodecFactory(runtime.NewScheme())
-	deserializer = codecs.UniversalDeserializer()
+	codecs = serializer.NewCodecFactory(runtime.NewScheme())
 
 	// kubeSystemNamespaces is a set of namespaces that are considered
 	// "system" level namespaces and are always skipped (never injected).

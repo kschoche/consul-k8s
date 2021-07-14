@@ -27,14 +27,13 @@ type Command struct {
 
 	flags *flag.FlagSet
 
-	flagOutputFile      string
-	flagServerAddr      string
-	flagServerPort      string
-	flagCAFile          string
-	flagTLSServerName   string
-	flagPollingInterval time.Duration
-	flagLogLevel        string
-	flagLogJSON         bool
+	flagOutputFile    string
+	flagServerAddr    string
+	flagServerPort    string
+	flagCAFile        string
+	flagTLSServerName string
+	flagLogLevel      string
+	flagLogJSON       bool
 
 	once sync.Once
 	help string
