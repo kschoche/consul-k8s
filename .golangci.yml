@@ -2,7 +2,7 @@ linters:
   disable-all: true
   enable:
     - deadcode
-#    - gofmt
+    - gofmt
 #    - govet
 #    - unconvert
 #    - staticcheck
