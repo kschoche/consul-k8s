@@ -72,14 +72,6 @@ func testGenSource() *GenSource {
 	}
 }
 
-// testBundle returns a valid bundle.
-func testBundle(t *testing.T) *Bundle {
-	source := testGenSource()
-	bundle, err := source.Certificate(context.Background(), nil)
-	require.NoError(t, err)
-	return &bundle
-}
-
 // testBundleDir writes the bundle contents to a directory and returns the
 // directory. The directory must be removed by the caller. The files in the
 // directory are ca.pem, leaf.pem, and leaf.key.pem.
