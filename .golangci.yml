@@ -1,12 +1,13 @@
 linters:
   disable-all: true
   enable:
-    - gofmt
-    - govet
-    - unconvert
-    - staticcheck
-    - ineffassign
-    - unparam
+    - deadcode
+#    - gofmt
+#    - govet
+#    - unconvert
+#    - staticcheck
+#    - ineffassign
+#    - unparam
 
 issues:
   # Disable the default exclude list so that all excludes are explicitly
@@ -59,4 +60,4 @@ linters-settings:
     simplify: true
 
 run:
-  timeout: 10m
+  timeout: 5m
