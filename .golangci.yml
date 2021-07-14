@@ -3,11 +3,12 @@ linters:
   enable:
     - deadcode
     - gofmt
-#    - govet
-#    - unconvert
-#    - staticcheck
-#    - ineffassign
-#    - unparam
+    - errcheck
+    - govet
+    - unconvert
+    - staticcheck
+    - ineffassign
+    - unparam
 
 issues:
   # Disable the default exclude list so that all excludes are explicitly
