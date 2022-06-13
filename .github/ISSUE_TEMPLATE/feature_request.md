@@ -1,7 +1,7 @@
 ---
 name: Feature Request
 about: If you have something you think Consul on Kubernetes could improve or add support for.
-labels: enhancement
+labels: type/enhancement
 
 ---
 
@@ -27,7 +27,7 @@ labels: enhancement
 
 #### Use Case(s)
 
-<!--- Use cases where this feature is applicable for Consul on Kubernetes (i.e. type of application, type of Consul use case i.e. Service Mesh, Service Disovery) --->
+<!--- Use cases where this feature is applicable for Consul on Kubernetes (i.e. type of application, type of Consul use case i.e. Service Mesh, Service Disovery). --->
 
 #### Contributions
 

@@ -1,212 +1,112 @@
-SHELL = bash
+VERSION = $(shell ./control-plane/build-support/scripts/version.sh control-plane/version/version.go)
 
-GOOS?=$(shell go env GOOS)
-GOARCH?=$(shell go env GOARCH)
-GOPATH=$(shell go env GOPATH)
-GOTAGS ?=
-GOTOOLS = \
-	github.com/magiconair/vendorfmt/cmd/vendorfmt \
-	github.com/mitchellh/gox \
-	golang.org/x/tools/cmd/cover \
-	golang.org/x/tools/cmd/stringer
+# ===========> Helm Targets
 
-DEV_IMAGE?=consul-k8s-dev
-GO_BUILD_TAG?=consul-k8s-build-go
-GIT_COMMIT?=$(shell git rev-parse --short HEAD)
-GIT_DIRTY?=$(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
-GIT_DESCRIBE?=$(shell git describe --tags --always)
-GIT_IMPORT=github.com/hashicorp/consul-k8s/version
-GOLDFLAGS=-X $(GIT_IMPORT).GitCommit=$(GIT_COMMIT)$(GIT_DIRTY) -X $(GIT_IMPORT).GitDescribe=$(GIT_DESCRIBE)
+gen-helm-docs: ## Generate Helm reference docs from values.yaml and update Consul website. Usage: make gen-helm-docs consul=<path-to-consul-repo>.
+	@cd hack/helm-reference-gen; go run ./... $(consul)
 
-export GIT_COMMIT
-export GIT_DIRTY
-export GIT_DESCRIBE
-export GOLDFLAGS
-export GOTAGS
+copy-crds-to-chart: ## Copy generated CRD YAML into charts/consul. Usage: make copy-crds-to-chart
+	@cd hack/copy-crds-to-chart; go run ./...
 
-CRD_OPTIONS ?= "crd:trivialVersions=true,allowDangerousTypes=true"
+bats-tests: ## Run Helm chart bats tests.
+	 bats --jobs 4 charts/consul/test/unit
 
-################
-# CI Variables #
-################
-CI_DEV_DOCKER_NAMESPACE?=hashicorpdev
-CI_DEV_DOCKER_IMAGE_NAME?=consul-k8s
-CI_DEV_DOCKER_WORKDIR?=.
-CONSUL_K8S_IMAGE_VERSION?=latest
-################
 
-DIST_TAG?=1
-DIST_BUILD?=1
-DIST_SIGN?=1
+# ===========> Control Plane Targets
 
-ifdef DIST_VERSION
-DIST_VERSION_ARG=-v "$(DIST_VERSION)"
-else
-DIST_VERSION_ARG=
-endif
+control-plane-dev: ## Build consul-k8s-control-plane binary.
+	@$(SHELL) $(CURDIR)/control-plane/build-support/scripts/build-local.sh -o $(GOOS) -a $(GOARCH)
 
-ifdef DIST_RELEASE_DATE
-DIST_DATE_ARG=-d "$(DIST_RELEASE_DATE)"
-else
-DIST_DATE_ARG=
-endif
+control-plane-dev-docker: ## Build consul-k8s-control-plane dev Docker image.
+	@$(SHELL) $(CURDIR)/control-plane/build-support/scripts/build-local.sh -o linux -a amd64
+	@DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -t '$(DEV_IMAGE)' \
+       --target=dev \
+       --build-arg 'GIT_COMMIT=$(GIT_COMMIT)' \
+       --build-arg 'GIT_DIRTY=$(GIT_DIRTY)' \
+       --build-arg 'GIT_DESCRIBE=$(GIT_DESCRIBE)' \
+       -f $(CURDIR)/control-plane/Dockerfile $(CURDIR)/control-plane
 
-ifdef DIST_PRERELEASE
-DIST_REL_ARG=-r "$(DIST_PRERELEASE)"
-else
-DIST_REL_ARG=
-endif
+control-plane-test: ## Run go test for the control plane.
+	cd control-plane; go test ./...
 
-PUB_GIT?=1
-PUB_WEBSITE?=1
+control-plane-ent-test: ## Run go test with Consul enterprise tests. The consul binary in your PATH must be Consul Enterprise.
+	cd control-plane; go test ./... -tags=enterprise
 
-ifeq ($(PUB_GIT),1)
-PUB_GIT_ARG=-g
-else
-PUB_GIT_ARG=
-endif
+control-plane-cov: ## Run go test with code coverage.
+	cd control-plane; go test ./... -coverprofile=coverage.out; go tool cover -html=coverage.out
 
-ifeq ($(PUB_WEBSITE),1)
-PUB_WEBSITE_ARG=-w
-else
-PUB_WEBSITE_ARG=
-endif
-
-DEV_PUSH?=0
-ifeq ($(DEV_PUSH),1)
-DEV_PUSH_ARG=
-else
-DEV_PUSH_ARG=--no-push
-endif
-
-all: bin ctrl-generate
-
-bin:
-	@$(SHELL) $(CURDIR)/build-support/scripts/build-local.sh
-
-dev:
-	@$(SHELL) $(CURDIR)/build-support/scripts/build-local.sh -o $(GOOS) -a $(GOARCH)
-
-dev-docker:
-	@$(SHELL) $(CURDIR)/build-support/scripts/build-local.sh -o linux -a amd64
-	@docker build -t '$(DEV_IMAGE)' --build-arg 'GIT_COMMIT=$(GIT_COMMIT)' --build-arg 'GIT_DIRTY=$(GIT_DIRTY)' --build-arg 'GIT_DESCRIBE=$(GIT_DESCRIBE)' -f $(CURDIR)/build-support/docker/Dev.dockerfile $(CURDIR)
-
-dev-tree:
-	@$(SHELL) $(CURDIR)/build-support/scripts/dev.sh $(DEV_PUSH_ARG)
-
-test:
-	go test ./...
-
-# requires a consul enterprise binary on the path
-ent-test:
-	go test ./... -tags=enterprise
-
-cov:
-	go test ./... -coverprofile=coverage.out
-	go tool cover -html=coverage.out
-
-tools:
-	go get -u -v $(GOTOOLS)
-
-# dist builds binaries for all platforms and packages them for distribution
-# make dist DIST_VERSION=<Desired Version> DIST_RELEASE_DATE=<release date>
-# date is in "month day, year" format.
-dist:
-	@$(SHELL) $(CURDIR)/build-support/scripts/release.sh -t '$(DIST_TAG)' -b '$(DIST_BUILD)' -S '$(DIST_SIGN)' $(DIST_VERSION_ARG) $(DIST_DATE_ARG) $(DIST_REL_ARG)
-
-publish:
-	@$(SHELL) $(CURDIR)/build-support/scripts/publish.sh $(PUB_GIT_ARG) $(PUB_WEBSITE_ARG)
-
-docker-images: go-build-image
-
-go-build-image:
-	@echo "Building Golang build container"
-	@docker build $(NOCACHE) $(QUIET) --build-arg 'GOTOOLS=$(GOTOOLS)' -t $(GO_BUILD_TAG) - < build-support/docker/Build-Go.dockerfile
-
-clean:
+control-plane-clean: ## Delete bin and pkg dirs.
 	@rm -rf \
-		$(CURDIR)/bin \
-		$(CURDIR)/pkg
+		$(CURDIR)/control-plane/bin \
+		$(CURDIR)/control-plane/pkg
 
-# Run controller tests
-ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-ctrl-test: ctrl-generate ctrl-manifests
-	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/master/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./...
+control-plane-lint: ## Run linter in the control-plane directory.
+	cd control-plane; golangci-lint run -c ../.golangci.yml
 
-# Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-ctrl-deploy: ctrl-manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+ctrl-generate: get-controller-gen ## Run CRD code generation.
+	cd control-plane; $(CONTROLLER_GEN) object:headerFile="build-support/controller/boilerplate.go.txt" paths="./..."
 
-# Generate manifests e.g. CRD, RBAC etc.
-ctrl-manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-# Generate code
-ctrl-generate: controller-gen
-	$(CONTROLLER_GEN) object:headerFile="build-support/controller/boilerplate.go.txt" paths="./..."
 
-# Copy CRD YAML to consul-helm.
-# Usage: make ctrl-crd-copy helm=<path-to-consul-helm-repo>
-ctrl-crd-copy:
-	@cd hack/crds-to-consul-helm; go run ./... $(helm)
 
-# find or download controller-gen
-# download controller-gen if necessary
-controller-gen:
+# ===========> CLI Targets
+
+cli-lint: ## Run linter in the control-plane directory.
+	cd cli; golangci-lint run -c ../.golangci.yml
+
+
+
+
+# ===========> Acceptance Tests Targets
+
+acceptance-lint: ## Run linter in the control-plane directory.
+	cd acceptance; golangci-lint run -c ../.golangci.yml
+
+
+# ===========> Shared Targets
+
+help: ## Show targets and their descriptions.
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+lint: ## Run linter in the control-plane, cli, and acceptance directories.
+	for p in control-plane cli acceptance; do cd $$p; golangci-lint run --path-prefix $$p -c ../.golangci.yml; cd ..; done
+
+ctrl-manifests: get-controller-gen ## Generate CRD manifests.
+	cd control-plane; $(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	make copy-crds-to-chart
+
+get-controller-gen: ## Download controller-gen program needed for operator SDK.
 ifeq (, $(shell which controller-gen))
 	@{ \
 	set -e ;\
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.0 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.8.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
-CONTROLLER_GEN=$(GOBIN)/controller-gen
+CONTROLLER_GEN=$(shell go env GOPATH)/bin/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
-kustomize:
-ifeq (, $(shell which kustomize))
-	@{ \
-	set -e ;\
-	KUSTOMIZE_GEN_TMP_DIR=$$(mktemp -d) ;\
-	cd $$KUSTOMIZE_GEN_TMP_DIR ;\
-	go mod init tmp ;\
-	go get sigs.k8s.io/kustomize/kustomize/v3@v3.5.4 ;\
-	rm -rf $$KUSTOMIZE_GEN_TMP_DIR ;\
-	}
-KUSTOMIZE=$(GOBIN)/kustomize
-else
-KUSTOMIZE=$(shell which kustomize)
-endif
+# ===========> CI Targets
 
-# In CircleCI, the linux binary will be attached from a previous step at pkg/bin/linux_amd64/. This make target
-# should only run in CI and not locally.
-ci.dev-docker:
-	@echo "Pulling consul-k8s container image - $(CONSUL_K8S_IMAGE_VERSION)"
-	@docker pull hashicorp/$(CI_DEV_DOCKER_IMAGE_NAME):$(CONSUL_K8S_IMAGE_VERSION) >/dev/null
-	@echo "Building consul-k8s Development container - $(CI_DEV_DOCKER_IMAGE_NAME)"
-	@docker build -t '$(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):$(GIT_COMMIT)' \
-	--build-arg CONSUL_K8S_IMAGE_VERSION=$(CONSUL_K8S_IMAGE_VERSION) \
-	--label COMMIT_SHA=$(CIRCLE_SHA1) \
-	--label PULL_REQUEST=$(CIRCLE_PULL_REQUEST) \
-	--label CIRCLE_BUILD_URL=$(CIRCLE_BUILD_URL) \
-	$(CI_DEV_DOCKER_WORKDIR) -f $(CURDIR)/build-support/docker/Dev.dockerfile
-	@echo $(DOCKER_PASS) | docker login -u="$(DOCKER_USER)" --password-stdin
-	@echo "Pushing dev image to: https://cloud.docker.com/u/$(CI_DEV_DOCKER_NAMESPACE)/repository/docker/$(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME)"
-	@docker push $(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):$(GIT_COMMIT)
-ifeq ($(CIRCLE_BRANCH), master)
-	@docker tag $(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):$(GIT_COMMIT) $(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):latest
-	@docker push $(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):latest
-endif
-ifeq ($(CIRCLE_BRANCH), crd-controller-base)
-	@docker tag $(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):$(GIT_COMMIT) $(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):crd-controller-base-latest
-	@docker push $(CI_DEV_DOCKER_NAMESPACE)/$(CI_DEV_DOCKER_IMAGE_NAME):crd-controller-base-latest
-endif
+ci.aws-acceptance-test-cleanup: ## Deletes AWS resources left behind after failed acceptance tests.
+	@cd hack/aws-acceptance-test-cleanup; go run ./... -auto-approve
 
-.PHONY: all bin clean dev dist docker-images go-build-image test tools ci.dev-docker
+version:
+	@echo $(VERSION)
+
+# ===========> Makefile config
+
+.DEFAULT_GOAL := help
+.PHONY: gen-helm-docs copy-crds-to-chart bats-tests help ci.aws-acceptance-test-cleanup version
+SHELL = bash
+GOOS?=$(shell go env GOOS)
+GOARCH?=$(shell go env GOARCH)
+DEV_IMAGE?=consul-k8s-control-plane-dev
+GIT_COMMIT?=$(shell git rev-parse --short HEAD)
+GIT_DIRTY?=$(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
+GIT_DESCRIBE?=$(shell git describe --tags --always)
+CRD_OPTIONS ?= "crd:allowDangerousTypes=true"
