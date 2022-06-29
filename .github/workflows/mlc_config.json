@@ -4,7 +4,6 @@
       "pattern": "^#"
     }
   ],
-{
   "aliveStatusCodes": [429, 200],
   timeout": "20s"
 }
