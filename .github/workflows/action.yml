@@ -11,3 +11,5 @@ jobs:
       with:
         file-path: 'charts/consul/values.yaml'
         max-depth: 1
+        config-file: 'mlc_config.json'
+
