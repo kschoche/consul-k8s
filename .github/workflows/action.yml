@@ -9,7 +9,7 @@ jobs:
     - uses: actions/checkout@master
     - uses: gaurav-nelson/github-action-markdown-link-check@v1
       with:
-        file-path: 'charts/consul/values.yaml'
+#        file-path: 'charts/consul/values.yaml'
         max-depth: 1
         config-file: '.github/workflows/mlc_config.json'
 
