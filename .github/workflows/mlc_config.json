@@ -4,9 +4,7 @@
       "pattern": "^#"
     }
   ],
-  "timeout": "20s",
-  "retryOn429": true,
-  "retryCount": 10,
-  "fallbackRetryDelay": "5s"
-
+{
+  "aliveStatusCodes": [429, 200],
+  timeout": "20s"
 }
