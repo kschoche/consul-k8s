@@ -137,7 +137,7 @@ func (w *MeshWebhook) getContainerSidecarCommand(namespace corev1.Namespace, mpi
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse annotation %q: %w", annotationEnvoyProxyConcurrency, err)
 		}
-		envoyConcurrency = int(val)
+		envoyConcurrency = int64(val)
 	}
 
 	cmd := []string{
@@ -148,7 +148,7 @@ func (w *MeshWebhook) getContainerSidecarCommand(namespace corev1.Namespace, mpi
 		"-service-node-name=" + ConsulNodeName,
 		"-log-level=" + w.LogLevel,
 		"-log-json=" + strconv.FormatBool(w.LogJSON),
-		"-envoy-concurrency=" + strconv.Itoa(envoyConcurrency),
+		"-envoy-concurrency=" + strconv.FormatInt(envoyConcurrency, 10),
 	}
 
 	if w.AuthMethod != "" {
